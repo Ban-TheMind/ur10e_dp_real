@@ -6,7 +6,84 @@
     "domain": "robomimic Lift-PH simulation",
     "default": true,
     "release_tag": "weights-v1",
-    "description": "Local RGB Transformer DP, completed epoch3050, simulation Lift-PH"
+    "description": "Local RGB Transformer DP, completed epoch3050, simulation Lift-PH",
+    "parts": [
+      {
+        "file": "local_lift_3050.ckpt.part000",
+        "bytes": 33554432,
+        "sha256": "2abe330e1f719630db176c8ee4927ce373f8436519bcea5d9dbb2d9e26b9023e"
+      },
+      {
+        "file": "local_lift_3050.ckpt.part001",
+        "bytes": 33554432,
+        "sha256": "e67b0e1acd3575aa2a0acc0ee5a3978aae7236b0e823822c93bf4770e4ddbe28"
+      },
+      {
+        "file": "local_lift_3050.ckpt.part002",
+        "bytes": 33554432,
+        "sha256": "7e4b16c534d91a3c060625b0acdfc623dbd16c341a0af058a537f4632c5f476a"
+      },
+      {
+        "file": "local_lift_3050.ckpt.part003",
+        "bytes": 33554432,
+        "sha256": "54f6e35f9c941836e49701b2e09546f060b7e3fd5bb70ee141d21cd956fca627"
+      },
+      {
+        "file": "local_lift_3050.ckpt.part004",
+        "bytes": 33554432,
+        "sha256": "cd2fc382fff7f56ec2ff738ded8b2bd912c758f0d12cd4fa2c6709329b4c3d5f"
+      },
+      {
+        "file": "local_lift_3050.ckpt.part005",
+        "bytes": 33554432,
+        "sha256": "4df2ea6998926c004c0b65a96d232c41032cdfef14926468b6d908214e5a50d8"
+      },
+      {
+        "file": "local_lift_3050.ckpt.part006",
+        "bytes": 33554432,
+        "sha256": "216a652d83eea1ba2f56d151822d9fe81169af7e9e11e3c8e56924f954f3bc7e"
+      },
+      {
+        "file": "local_lift_3050.ckpt.part007",
+        "bytes": 33554432,
+        "sha256": "1f53b5b4b3fe024c2347f877fbc5a1937fa8cc1f964fbece83ad686b15721333"
+      },
+      {
+        "file": "local_lift_3050.ckpt.part008",
+        "bytes": 33554432,
+        "sha256": "20948275ec1fb78fbfee0e09058f7a7cbebe79299bafb34c076671d9b0595f1e"
+      },
+      {
+        "file": "local_lift_3050.ckpt.part009",
+        "bytes": 33554432,
+        "sha256": "44154623e175b62add2d5816d9b74850e730bd3ff4403bce506d380f8f4ac8de"
+      },
+      {
+        "file": "local_lift_3050.ckpt.part010",
+        "bytes": 33554432,
+        "sha256": "11a7bb7606d75e37057e9d4de8c11285f889ed356a0a926a99e77cbc8ed7122c"
+      },
+      {
+        "file": "local_lift_3050.ckpt.part011",
+        "bytes": 33554432,
+        "sha256": "9120734abcc91e89475a82d7603496909b67913545e1f554b4e8f061e2b70fa4"
+      },
+      {
+        "file": "local_lift_3050.ckpt.part012",
+        "bytes": 33554432,
+        "sha256": "2da3e9ac4b35431072e919361560c2bd759ada278ae0480ceef5b8e1f5d9b9ce"
+      },
+      {
+        "file": "local_lift_3050.ckpt.part013",
+        "bytes": 33554432,
+        "sha256": "1797bee66e5a41c20b7b59c3d1195c1d4876702ce5e48c840471d18d58e90840"
+      },
+      {
+        "file": "local_lift_3050.ckpt.part014",
+        "bytes": 33204566,
+        "sha256": "eaca73aabbc462a89416f11135e3bcaf754750a50845df7ff90be1402f73da50"
+      }
+    ]
   },
   {
     "file": "author_lift_0250.ckpt",
@@ -16,6 +93,113 @@
     "default": false,
     "release_tag": "weights-v1",
     "description": "Author RGB Transformer DP, tied full-score epoch250, not real-robot weights",
-    "source_url": "https://diffusion-policy.cs.columbia.edu/data/experiments/image/lift_ph/diffusion_policy_transformer/train_0/checkpoints/epoch=0250-test_mean_score=1.000.ckpt"
+    "source_url": "https://diffusion-policy.cs.columbia.edu/data/experiments/image/lift_ph/diffusion_policy_transformer/train_0/checkpoints/epoch=0250-test_mean_score=1.000.ckpt",
+    "parts": [
+      {
+        "file": "author_lift_0250.ckpt.part000",
+        "bytes": 33554432,
+        "sha256": "8d72d3278e13c3170b137a0be09030198acda9ae1d0843f77340d17bd781c395"
+      },
+      {
+        "file": "author_lift_0250.ckpt.part001",
+        "bytes": 33554432,
+        "sha256": "006218b5031d7b9b23d85893ef414ddc98fd987c72b9f2a45c80a4e9a1c37b41"
+      },
+      {
+        "file": "author_lift_0250.ckpt.part002",
+        "bytes": 33554432,
+        "sha256": "5369421ded2b97428492b05e02fd56502ef8023894a434534336dee9b8ad0314"
+      },
+      {
+        "file": "author_lift_0250.ckpt.part003",
+        "bytes": 33554432,
+        "sha256": "6d0137862430e8d34187caafcb7869f189eb12bf0e0f96241ac43c33715e3ea2"
+      },
+      {
+        "file": "author_lift_0250.ckpt.part004",
+        "bytes": 33554432,
+        "sha256": "9e3eb6bf2a1bad515690ced403ae7125f995fb1fd82014a607936cf2863938e3"
+      },
+      {
+        "file": "author_lift_0250.ckpt.part005",
+        "bytes": 33554432,
+        "sha256": "fc133c03af9dfeec4776538972ec6408fdb61972ddc0086edd0fb1e39fbcaea5"
+      },
+      {
+        "file": "author_lift_0250.ckpt.part006",
+        "bytes": 33554432,
+        "sha256": "2a9a4a78c074bf06a54dbbedb8d1def41e98c1bf6556acf865adc5c75fb40c9b"
+      },
+      {
+        "file": "author_lift_0250.ckpt.part007",
+        "bytes": 33554432,
+        "sha256": "ff8205072757cb46f08b437d2b051eb3d5ac4f165359d3a0548be14188a84ec3"
+      },
+      {
+        "file": "author_lift_0250.ckpt.part008",
+        "bytes": 33554432,
+        "sha256": "9788795d52f07902f4db5d0d3324d663b989c7525f1a7ea1373dff4c2acc70d2"
+      },
+      {
+        "file": "author_lift_0250.ckpt.part009",
+        "bytes": 33554432,
+        "sha256": "d103b6d16a4ec4539cfa8a1b3d895fc1487f82d366a348c1cd206846cbb9cfe2"
+      },
+      {
+        "file": "author_lift_0250.ckpt.part010",
+        "bytes": 33554432,
+        "sha256": "87106aa5d22b7a8030365d35262a0f4f243c774e971299c28d340a992a99add9"
+      },
+      {
+        "file": "author_lift_0250.ckpt.part011",
+        "bytes": 33554432,
+        "sha256": "6f077a8feb4f8c2900cae05b7af72acb63db2d012ebb59a0a451fb55decea09c"
+      },
+      {
+        "file": "author_lift_0250.ckpt.part012",
+        "bytes": 33554432,
+        "sha256": "db2f4f1865018b1c034541ff62ef573d7be94e361592bc7e1758149ba9385b37"
+      },
+      {
+        "file": "author_lift_0250.ckpt.part013",
+        "bytes": 33554432,
+        "sha256": "fe3592d78efdb534dc51b3c454501ca81dbe98da30bbc05e81896674c29e6bba"
+      },
+      {
+        "file": "author_lift_0250.ckpt.part014",
+        "bytes": 33554432,
+        "sha256": "d221e5e4d5979ac96aa920f415917a702226cfb4ccf2026f196e62bbd3647535"
+      },
+      {
+        "file": "author_lift_0250.ckpt.part015",
+        "bytes": 33554432,
+        "sha256": "9b69e070a0090f1910983f6ecda98e2a3b8eafd2b8d196755bfe0a48a9a6f85d"
+      },
+      {
+        "file": "author_lift_0250.ckpt.part016",
+        "bytes": 33554432,
+        "sha256": "661d5fc082a515ca41e29071679e43c2c22b60dd364565f377685a7b3029e085"
+      },
+      {
+        "file": "author_lift_0250.ckpt.part017",
+        "bytes": 33554432,
+        "sha256": "dbd8b62126d8f1097c88089fef21125d9074fe860f390e411c286b26f756cf07"
+      },
+      {
+        "file": "author_lift_0250.ckpt.part018",
+        "bytes": 33554432,
+        "sha256": "9f3fff3d95ca38aabcc1b275bd06047af157c5507298556993c7f98b11825c6c"
+      },
+      {
+        "file": "author_lift_0250.ckpt.part019",
+        "bytes": 33554432,
+        "sha256": "5dd86df8ee0f9faa9d676ea837de64e4d498950bb7a7b16910006ec76a8b95f5"
+      },
+      {
+        "file": "author_lift_0250.ckpt.part020",
+        "bytes": 10870049,
+        "sha256": "57235733c3454930daee95a1e76dede882c88d627c0848c685aea9856260c132"
+      }
+    ]
   }
 ]
