@@ -1,0 +1,59 @@
+{
+  "source": "https://github.com/real-stanford/diffusion_policy",
+  "upstream_commit": "5ba07ac6661db573af695b419a7947ecb704690f",
+  "local_source": "diffusion_policy project snapshot",
+  "files": [
+    {
+      "path": "diffusion_policy/model/diffusion/ema_model.py",
+      "sha256": "f683be124722abe0703e2cf003566ab2d446783383cdcd5202063e20148ae467"
+    },
+    {
+      "path": "diffusion_policy/policy/diffusion_transformer_hybrid_image_policy.py",
+      "sha256": "e4166882bf0fc2e36e97beb27cdf701286230abceca1efaea9aae9a114a008e7"
+    },
+    {
+      "path": "diffusion_policy/common/pytorch_util.py",
+      "sha256": "96ce50e191b4c837532529040af65d2b9a1f433f33a5187f8cf256b62d84b6b4"
+    },
+    {
+      "path": "diffusion_policy/model/vision/crop_randomizer.py",
+      "sha256": "85787b6becd337352c2a1795f1e77be977c073134f91c3d0924b9d0e36c92978"
+    },
+    {
+      "path": "diffusion_policy/model/common/tensor_util.py",
+      "sha256": "751b042aa5390ddf1f5b6220a465dfa20dbb9304e3c057f04512d6ee55f4e1b1"
+    },
+    {
+      "path": "diffusion_policy/common/robomimic_config_util.py",
+      "sha256": "e782f9ba46ea433a77dfe95525a879bcf3033969f07ba9f776268c247e8a8a30"
+    },
+    {
+      "path": "diffusion_policy/model/diffusion/mask_generator.py",
+      "sha256": "23dba4c112ed57e41d530612c79d9841c9b3c5bd3d6790863d1739190a9ab7b0"
+    },
+    {
+      "path": "diffusion_policy/model/common/module_attr_mixin.py",
+      "sha256": "658dececa20f7628960fc1a8db89e4be3693e1bba47f63d1ff8a4faa2d481e45"
+    },
+    {
+      "path": "diffusion_policy/model/diffusion/transformer_for_diffusion.py",
+      "sha256": "3afa0f6d1fef7d51075eb10b6e77682cd555eb279a8c9e19b5289adf8137a6b1"
+    },
+    {
+      "path": "diffusion_policy/model/diffusion/positional_embedding.py",
+      "sha256": "2266c75ecc9c9ac8ca126839d39a7bafbdd7af8800d6de903f66815e64cc366c"
+    },
+    {
+      "path": "diffusion_policy/policy/base_image_policy.py",
+      "sha256": "32fd3fe35e2827f4472e195381e642dd8d78f4f0038f4f9625e0128c76e1aecd"
+    },
+    {
+      "path": "diffusion_policy/model/common/normalizer.py",
+      "sha256": "92322852fc04d956d0dd43a2e41fb461dee246bbf97ddc7940186a9307525ed3"
+    },
+    {
+      "path": "diffusion_policy/model/common/dict_of_tensor_mixin.py",
+      "sha256": "158b63a244bcfb9aa377206730f5f59778c6aeb9138ff55c76d2c28ec46952d1"
+    }
+  ]
+}

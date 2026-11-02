@@ -1,0 +1,31 @@
+{
+  "synthetic_data": true,
+  "updates": 2,
+  "device": "cpu",
+  "exact_resume": {
+    "model": true,
+    "ema_model": true
+  },
+  "metrics": [
+    {
+      "updates": 1,
+      "equivalent_epochs": 0.1,
+      "train_loss": 0.3290708065032959,
+      "lr": [
+        1e-05,
+        1e-06
+      ],
+      "ema_val_loss": 2.8907668590545654
+    },
+    {
+      "updates": 2,
+      "equivalent_epochs": 0.2,
+      "train_loss": 0.07088717073202133,
+      "lr": [
+        1e-05,
+        1e-06
+      ],
+      "ema_val_loss": 2.7640926837921143
+    }
+  ]
+}
