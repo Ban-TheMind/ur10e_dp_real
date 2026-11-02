@@ -1,0 +1,21 @@
+[
+  {
+    "file": "local_lift_3050.ckpt",
+    "sha256": "1640608975db43b3cdcf5fa941dfcf3fb18dc6e0d8634ffe8d7e6cbb40af9e55",
+    "bytes": 502966614,
+    "domain": "robomimic Lift-PH simulation",
+    "default": true,
+    "release_tag": "weights-v1",
+    "description": "Local RGB Transformer DP, completed epoch3050, simulation Lift-PH"
+  },
+  {
+    "file": "author_lift_0250.ckpt",
+    "sha256": "37a2c5ad87c8413a6b132b9d611f836bd651154df414a32add51d788232e576b",
+    "bytes": 681958689,
+    "domain": "robomimic Lift-PH simulation",
+    "default": false,
+    "release_tag": "weights-v1",
+    "description": "Author RGB Transformer DP, tied full-score epoch250, not real-robot weights",
+    "source_url": "https://diffusion-policy.cs.columbia.edu/data/experiments/image/lift_ph/diffusion_policy_transformer/train_0/checkpoints/epoch=0250-test_mean_score=1.000.ckpt"
+  }
+]
