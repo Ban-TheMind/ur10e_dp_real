@@ -1,0 +1,34 @@
+{
+  "robot_ip": "192.168.1.102",
+  "control_hz": 125,
+  "sample_hz": 20,
+  "command_timeout_s": 2.0,
+  "observation_max_age_s": 0.5,
+  "translation_speed_m_s": 0.03,
+  "rotation_speed_rad_s": 0.2,
+  "workspace_min_m": [-1.3, -1.3, 0.02],
+  "workspace_max_m": [1.3, 1.3, 1.8],
+  "fixed_orientation": true,
+  "gripper": {
+    "port": "/dev/ttyUSB0",
+    "baudrate": 115200,
+    "slave_id": 9,
+    "serial_timeout_s": 0.2,
+    "action_timeout_s": 10.0,
+    "speed_raw": 64,
+    "force_raw": 64,
+    "poll_hz": 10,
+    "helper": "gripper_sdk/build/robotiq_sdk_command"
+  },
+  "cameras": {
+    "agentview_image": {"serial": "SET_EXTERNAL_CAMERA_SERIAL", "width": 640, "height": 480, "fps": 30},
+    "robot0_eye_in_hand_image": {"serial": "SET_WRIST_CAMERA_SERIAL", "width": 640, "height": 480, "fps": 30}
+  },
+  "policy_frame": {
+    "base_T_policy": [[1,0,0,0],[0,1,0,0],[0,0,1,0],[0,0,0,1]],
+    "tcp_T_policy_tool": [[1,0,0,0],[0,1,0,0],[0,0,1,0],[0,0,0,1]],
+    "gripper_max_width_m": 0.085,
+    "virtual_qpos_closed": [0.0,0.0],
+    "virtual_qpos_open": [0.04,-0.04]
+  }
+}

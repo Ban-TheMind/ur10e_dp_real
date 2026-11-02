@@ -1,0 +1,16 @@
+{
+  "max_updates": 5000,
+  "batch_size": 32,
+  "learning_rate": 0.00001,
+  "encoder_learning_rate": 0.000001,
+  "weight_decay": 0.000001,
+  "warmup_updates": 100,
+  "scheduler": "constant",
+  "freeze_encoder": false,
+  "val_fraction": 0.2,
+  "seed": 42,
+  "save_updates": [0,500,1500,3000,5000],
+  "validate_every": 100,
+  "validation_batches": 20,
+  "device": "cuda"
+}
