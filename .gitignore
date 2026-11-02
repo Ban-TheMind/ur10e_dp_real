@@ -1,0 +1,13 @@
+.venv*/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+data/
+outputs/
+weights/*.ckpt
+weights/*.pt
+configs/site.local.json
+gripper_sdk/build/
+build/
+dist/
