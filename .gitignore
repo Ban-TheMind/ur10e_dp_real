@@ -7,6 +7,7 @@ data/
 outputs/
 weights/*.ckpt
 weights/*.pt
+weights/*.part*
 configs/site.local.json
 gripper_sdk/build/
 build/

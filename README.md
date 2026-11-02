@@ -26,7 +26,7 @@ python3.10 -m venv .venv_train
 
 ## 权重
 
-两份原始检查点作为 `weights-v1` Release 附件保存，不进入普通Git历史。已登录目标私有仓库的GitHub CLI可下载：
+两份原始检查点通过 `weights-v1` Release 的32MiB分块附件保存，不进入普通Git历史。分块只用于绕过附件传输通道的限制，不改变权重内容。已登录目标私有仓库的GitHub CLI可下载并自动重组：
 
 ```bash
 python tools/fetch_weights.py
@@ -34,7 +34,7 @@ python tools/fetch_weights.py
 python tools/fetch_weights.py --author-only
 ```
 
-也可在Release网页下载至 `weights/`。脚本检查SHA256；原始文件含模型、EMA及原优化器状态，微调只选择模型权重初始化新训练，不沿用原优化器。只加载本项目或作者可信来源的pickle权重。
+脚本逐块校验，再重组并检查原始文件SHA256。原始文件含模型、EMA及原优化器状态，微调只选择模型权重初始化新训练，不沿用原优化器。也可在Release网页下载全部分块至 `weights/` 后运行 `python tools/fetch_weights.py --assemble-only`；公开作者权重仍可使用上面的直链模式。只加载本项目或作者可信来源的pickle权重。
 
 ## 配置现场
 
