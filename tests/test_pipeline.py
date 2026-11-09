@@ -149,6 +149,19 @@ class PipelineTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 discover(root)
 
+    def test_scratch_normalizer_uses_only_training_episodes(self):
+        with tempfile.TemporaryDirectory() as root:
+            training = make_episode(root, self.cfg, number=0)
+            heldout = make_episode(root, self.cfg, number=100)
+            trainset = Episodes([training], 10, 2)
+            normalizer = trainset.get_normalizer()
+            self.assertLess(float(normalizer["robot0_eef_pos"].get_input_stats()["max"][0]), 0.5)
+            sample = Episodes([heldout], 10, 2)[0]
+            action = sample["action"]
+            import torch
+            torch.testing.assert_close(normalizer["action"].unnormalize(normalizer["action"](action)), action)
+            torch.testing.assert_close(normalizer["action"](action)[:, 3:], action[:, 3:])
+
     def test_mixed_frames_rejected(self):
         with tempfile.TemporaryDirectory() as root:
             a = make_episode(root, self.cfg)

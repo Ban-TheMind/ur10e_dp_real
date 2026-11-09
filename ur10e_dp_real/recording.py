@@ -77,7 +77,7 @@ class EpisodeWriter:
                     for name, camera in item["sample"]["cameras"].items():
                         rel = Path(name) / "{:06d}.png".format(self.count)
                         (self.path / name).mkdir(exist_ok=True)
-                        Image.fromarray(camera.pop("rgb")).save(self.path / rel)
+                        Image.fromarray(camera.pop("rgb")).save(self.path / rel, compress_level=0)
                         camera["image"] = str(rel)
                     stream.write(json.dumps(jsonable(item)) + "\n")
                     stream.flush()

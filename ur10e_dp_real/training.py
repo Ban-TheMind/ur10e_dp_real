@@ -4,13 +4,14 @@ import copy
 import json
 import math
 import random
+import time
 from pathlib import Path
 import numpy as np
 
 
-def train(source, data_root, output, settings, resume=None):
+def train(source, data_root, output, settings, resume=None, policy_config=None):
     import torch
-    from .model import load_policy, sha256
+    from .model import load_policy, new_policy, sha256
     from .data import Episodes, discover, split_episodes
     from diffusion_policy.model.diffusion.ema_model import EMAModel
 
@@ -35,7 +36,10 @@ def train(source, data_root, output, settings, resume=None):
             Path(p) for p in split["val"]
         ]
     else:
-        model, config, _ = load_policy(source, settings["device"])
+        if policy_config:
+            model, config = new_policy(policy_config, settings["device"])
+        else:
+            model, config, _ = load_policy(source, settings["device"])
         train_paths, val_paths = split_episodes(
             discover(data_root), settings["val_fraction"], seed
         )
@@ -44,10 +48,19 @@ def train(source, data_root, output, settings, resume=None):
             "val": [str(p.resolve()) for p in val_paths],
         }
         payload = None
+    if settings.get("split_manifest"):
+        locked = json.loads(Path(settings["split_manifest"]).read_text())
+        actual = {key: [str(p.resolve()) for p in paths] for key, paths in
+                  (("train", train_paths), ("val", val_paths))}
+        if any(actual[key] != locked[key] for key in actual):
+            raise ValueError("Dataset split differs from the locked split manifest")
     dataset = Episodes(train_paths, model.horizon, model.n_obs_steps)
     valset = Episodes(val_paths, model.horizon, model.n_obs_steps)
     if valset.contract is not None and dataset.contract != valset.contract:
         raise ValueError("Train/validation coordinate or timing contracts differ")
+    if policy_config and not resume:
+        model.set_normalizer(dataset.get_normalizer())
+        model.to(settings["device"])
     ema = copy.deepcopy(model)
     ema.requires_grad_(False)
     if settings["freeze_encoder"]:
@@ -93,6 +106,8 @@ def train(source, data_root, output, settings, resume=None):
         if payload["dataset_hashes"] != fingerprints:
             raise ValueError("Episode data changed since saved checkpoint")
         ema.load_state_dict(payload["ema_model"])
+        # The normalizer recreates parameters while loading; move them back to GPU.
+        ema.to(settings["device"])
         optimizer.load_state_dict(payload["optimizer"])
         scheduler.load_state_dict(payload["scheduler"])
         ema_update.optimization_step = payload["ema_updates"]
@@ -105,19 +120,23 @@ def train(source, data_root, output, settings, resume=None):
         np.random.set_state(payload["numpy_rng"])
         random.setstate(payload["python_rng"])
     manifest = {
-        "source_checkpoint": str(Path(source).resolve()),
-        "source_sha256": sha256(source),
+        "source_checkpoint": str(Path(source).resolve()) if source else None,
+        "source_sha256": sha256(source) if source else None,
+        "initialization": "random" if policy_config else "source_ema",
+        "policy_config": config,
         "split": split,
         "settings": settings,
         "train_windows": len(dataset),
         "val_windows": len(valset),
         "contract": dataset.contract,
-        "normalizer": "preserved_from_source",
+        "normalizer": "real_train_only" if policy_config else "preserved_from_source",
         "dataset_hashes": fingerprints,
     }
     (output / "run.json").write_text(json.dumps(manifest, indent=2) + "\n")
 
-    def save():
+    best_val = payload.get("best_val_loss", float("inf")) if payload else float("inf")
+
+    def save(name=None):
         state = dict(
             policy_config=config,
             model=model.state_dict(),
@@ -140,8 +159,9 @@ def train(source, data_root, output, settings, resume=None):
             numpy_rng=np.random.get_state(),
             python_rng=random.getstate(),
             ema_updates=ema_update.optimization_step,
+            best_val_loss=best_val,
         )
-        dest = output / ("update_{:06d}.pt".format(step))
+        dest = output / (name or "update_{:06d}.pt".format(step))
         temp = dest.with_suffix(".tmp")
         torch.save(state, temp)
         temp.replace(dest)
@@ -149,6 +169,11 @@ def train(source, data_root, output, settings, resume=None):
 
     if not payload:
         save()
+    print("Initialization:", manifest["initialization"], "| train/val episodes:",
+          len(train_paths), len(val_paths), "| windows:", len(dataset), len(valset), flush=True)
+    start_time, initial_step = time.perf_counter(), step
+    from tqdm import tqdm
+    progress = tqdm(total=settings["max_updates"], initial=step, unit="update", dynamic_ncols=True)
     with (output / "metrics.jsonl").open("a") as stream:
         while step < settings["max_updates"]:
             if cursor >= len(order):
@@ -192,12 +217,33 @@ def train(source, data_root, output, settings, resume=None):
                     torch.manual_seed(seed + 1)
                     losses = []
                     for i, b in enumerate(val_loader):
-                        if i >= settings["validation_batches"]:
+                        if settings["validation_batches"] > 0 and i >= settings["validation_batches"]:
                             break
-                        losses.append(ema.compute_loss(move(b)).item())
-                log["ema_val_loss"] = float(np.mean(losses))
+                        losses.append((ema.compute_loss(move(b)).item(), len(b["action"])))
+                log["ema_val_loss"] = float(sum(v*n for v,n in losses) / sum(n for _,n in losses))
+            log["elapsed_seconds"] = time.perf_counter() - start_time
+            log["updates_per_second"] = (step - initial_step) / log["elapsed_seconds"]
             stream.write(json.dumps(log) + "\n")
             stream.flush()
+            progress.update(1)
+            progress.set_postfix(epoch=round(log["equivalent_epochs"], 2), loss=round(loss.item(), 5))
+            if "ema_val_loss" in log:
+                print("\nValidation update", step, "epoch", round(log["equivalent_epochs"], 3),
+                      "EMA loss", log["ema_val_loss"], flush=True)
+                if log["ema_val_loss"] < best_val:
+                    best_val = log["ema_val_loss"]
+                    save("best_val.pt")
+                    (output / "best_val.json").write_text(json.dumps(dict(
+                        updates=step, equivalent_epochs=log["equivalent_epochs"],
+                        ema_val_loss=best_val, criterion="offline EMA denoising loss; closed-loop success unverified"), indent=2) + "\n")
             if step in settings["save_updates"] or step == settings["max_updates"]:
                 print("Saved", save(), "loss", loss.item(), flush=True)
+            if step % settings.get("latest_every", 500) == 0:
+                save("latest.pt")
+    progress.close()
+    (output / "completion.json").write_text(json.dumps(dict(
+        updates=step, expected_updates=settings["max_updates"],
+        elapsed_seconds=time.perf_counter()-start_time,
+        equivalent_epochs=seen_windows/len(dataset),
+        status="training_complete"), indent=2) + "\n")
     return manifest

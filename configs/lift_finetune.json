@@ -1,0 +1,24 @@
+{
+  "max_updates": 5000,
+  "batch_size": 32,
+  "learning_rate": 1e-05,
+  "encoder_learning_rate": 1e-06,
+  "weight_decay": 1e-06,
+  "warmup_updates": 100,
+  "scheduler": "constant",
+  "freeze_encoder": false,
+  "val_fraction": 0.2,
+  "seed": 42,
+  "save_updates": [
+    0,
+    500,
+    1500,
+    3000,
+    5000
+  ],
+  "validate_every": 500,
+  "validation_batches": 0,
+  "device": "cuda",
+  "split_manifest": "/home/zanglab/projects/ur10e_dp_real/data/lift_success/split.json",
+  "latest_every": 500
+}

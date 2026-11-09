@@ -89,6 +89,30 @@ class Episodes:
     def __len__(self):
         return len(self.index)
 
+    def get_normalizer(self):
+        """Fit on this dataset's training episodes, without reading images."""
+        from diffusion_policy.model.common.normalizer import (
+            LinearNormalizer, SingleFieldLinearNormalizer,
+        )
+
+        values = {k: [] for k in ("action", "robot0_eef_pos", "robot0_eef_quat", "robot0_gripper_qpos")}
+        for _, rows, frame in self.episodes:
+            for row in rows:
+                obs = frame.observations(row["sample"])
+                for key in values:
+                    if key != "action":
+                        values[key].append(obs[key])
+                values["action"].append(frame.encode_action(row["target_tcp_pose"], row["target_gripper_width_m"]))
+        norm = LinearNormalizer()
+        norm.fit({k: np.asarray(v, dtype=np.float32) for k, v in values.items()})
+        # Rotations and the already normalized gripper action retain their geometry.
+        norm["robot0_eef_quat"] = SingleFieldLinearNormalizer.create_identity()
+        norm["action"].params_dict["scale"].data[3:] = 1
+        norm["action"].params_dict["offset"].data[3:] = 0
+        for key in RGB_KEYS:
+            norm[key] = SingleFieldLinearNormalizer.create_fit(np.array([[0.], [1.]], dtype=np.float32))
+        return norm
+
     def __getitem__(self, index):
         import torch
 

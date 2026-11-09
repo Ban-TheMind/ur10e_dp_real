@@ -31,6 +31,12 @@ def main():
     p.add_argument("--output", required=True)
     p.add_argument("--settings", default="configs/finetune.json")
     p.add_argument("--resume")
+    p = commands.add_parser("train")
+    p.add_argument("--policy-config", required=True)
+    p.add_argument("--data", required=True)
+    p.add_argument("--output", required=True)
+    p.add_argument("--settings", required=True)
+    p.add_argument("--resume")
     p = commands.add_parser("model-check")
     p.add_argument("--checkpoint", required=True)
     p.add_argument("--device", default="cpu")
@@ -122,6 +128,12 @@ def main():
             json.loads(Path(args.settings).read_text()),
             args.resume,
         )
+    elif args.command == "train":
+        from .training import train
+
+        train(None, args.data, args.output,
+              json.loads(Path(args.settings).read_text()), args.resume,
+              policy_config=args.policy_config)
     elif args.command == "model-check":
         import torch
         from .model import load_policy

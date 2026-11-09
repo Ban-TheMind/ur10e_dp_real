@@ -65,6 +65,9 @@ C开始一条演示，Enter保存并标为成功，Backspace保存并标为失�
 
 ## 微调
 
+2026-11-07成功集、独立训练环境、微调与500epoch从零训练的当前入口见
+[真实训练说明](docs/real_training.md)。两组共用固定验证集，并分别在可见桌面终端中运行。
+
 ```bash
 ur-dp finetune --checkpoint weights/local_lift_3050.ckpt \
   --data data/lift --output outputs/lift_ft --settings configs/finetune.json

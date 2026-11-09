@@ -12,6 +12,17 @@ def sha256(path):
     return digest.hexdigest()
 
 
+def new_policy(config_path, device="cpu"):
+    """Construct the architecture from plain config; never load model weights."""
+    import json
+    import hydra
+    from omegaconf import OmegaConf
+
+    config = json.loads(Path(config_path).read_text())
+    model = hydra.utils.instantiate(OmegaConf.create(config))
+    return model.to(device), config
+
+
 def load_policy(path, device="cpu", weights="ema", inference_steps=None):
     import dill
     import hydra

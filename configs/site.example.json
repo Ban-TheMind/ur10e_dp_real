@@ -21,8 +21,8 @@
     "helper": "gripper_sdk/build/robotiq_sdk_command"
   },
   "cameras": {
-    "agentview_image": {"serial": "SET_EXTERNAL_CAMERA_SERIAL", "width": 640, "height": 480, "fps": 30},
-    "robot0_eye_in_hand_image": {"serial": "SET_WRIST_CAMERA_SERIAL", "width": 640, "height": 480, "fps": 30}
+    "agentview_image": {"serial": "406122071837", "width": 640, "height": 480, "fps": 30},
+    "robot0_eye_in_hand_image": {"serial": "406122070698", "width": 640, "height": 480, "fps": 30}
   },
   "policy_frame": {
     "base_T_policy": [[1,0,0,0],[0,1,0,0],[0,0,1,0],[0,0,0,1]],

@@ -32,7 +32,7 @@ int main(int argc, char** argv) {
     // so diagnostic status queries cannot write/reset the command block.
     Robotiq::GripperModbusClient client(config);
     Robotiq::GripperStatus status;
-    if (operation == "status") status = client.readStatus();
+    if (operation == "status") status = harvest::statusBeforeMove(client, actionTimeout);
     else if (operation == "command") {
       // Send once without waiting for finger travel; Python continues polling real feedback.
       (void)harvest::statusBeforeMove(client, actionTimeout);
