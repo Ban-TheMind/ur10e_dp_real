@@ -1,0 +1,20 @@
+{
+  "epochs": 100,
+  "max_updates": 14900,
+  "normalizer": "real_train_only",
+  "batch_size": 32,
+  "learning_rate": 0.00001,
+  "encoder_learning_rate": 0.000001,
+  "weight_decay": 0.000001,
+  "warmup_updates": 100,
+  "scheduler": "constant",
+  "freeze_encoder": false,
+  "val_fraction": 0.2,
+  "seed": 42,
+  "save_updates": [0, 745, 1490, 2235, 2980, 3725, 4470, 5215, 5960, 6705, 7450, 8195, 8940, 9685, 10430, 11175, 11920, 12665, 13410, 14155, 14900],
+  "validate_every": 745,
+  "validation_batches": 0,
+  "device": "cuda",
+  "split_manifest": "/home/zanglab/projects/ur10e_dp_real/data/lift_success/split.json",
+  "latest_every": 745
+}

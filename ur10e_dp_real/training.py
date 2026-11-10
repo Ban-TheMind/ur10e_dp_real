@@ -9,6 +9,21 @@ from pathlib import Path
 import numpy as np
 
 
+def configure_normalizer(model, trainset, settings, *, from_scratch, resume):
+    """Fit target statistics before creating EMA; resumed weights retain saved stats."""
+    mode = settings.get(
+        "normalizer", "real_train_only" if from_scratch else "preserved_from_source"
+    )
+    if mode not in ("real_train_only", "preserved_from_source"):
+        raise ValueError("normalizer must be real_train_only or preserved_from_source")
+    if from_scratch and mode != "real_train_only":
+        raise ValueError("Random initialization requires real_train_only normalization")
+    if mode == "real_train_only" and not resume:
+        model.set_normalizer(trainset.get_normalizer())
+        model.to(settings["device"])
+    return mode
+
+
 def train(source, data_root, output, settings, resume=None, policy_config=None):
     import torch
     from .model import load_policy, new_policy, sha256
@@ -58,9 +73,12 @@ def train(source, data_root, output, settings, resume=None, policy_config=None):
     valset = Episodes(val_paths, model.horizon, model.n_obs_steps)
     if valset.contract is not None and dataset.contract != valset.contract:
         raise ValueError("Train/validation coordinate or timing contracts differ")
-    if policy_config and not resume:
-        model.set_normalizer(dataset.get_normalizer())
-        model.to(settings["device"])
+    updates_per_epoch = math.ceil(len(dataset) / settings["batch_size"])
+    if "epochs" in settings and settings["max_updates"] != settings["epochs"] * updates_per_epoch:
+        raise ValueError("max_updates must equal epochs * ceil(train_windows / batch_size)")
+    normalizer_mode = configure_normalizer(
+        model, dataset, settings, from_scratch=bool(policy_config), resume=bool(resume)
+    )
     ema = copy.deepcopy(model)
     ema.requires_grad_(False)
     if settings["freeze_encoder"]:
@@ -129,7 +147,8 @@ def train(source, data_root, output, settings, resume=None, policy_config=None):
         "train_windows": len(dataset),
         "val_windows": len(valset),
         "contract": dataset.contract,
-        "normalizer": "real_train_only" if policy_config else "preserved_from_source",
+        "normalizer": normalizer_mode,
+        "updates_per_epoch": updates_per_epoch,
         "dataset_hashes": fingerprints,
     }
     (output / "run.json").write_text(json.dumps(manifest, indent=2) + "\n")

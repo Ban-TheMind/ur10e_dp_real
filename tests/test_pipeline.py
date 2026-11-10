@@ -149,7 +149,7 @@ class PipelineTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 discover(root)
 
-    def test_scratch_normalizer_uses_only_training_episodes(self):
+    def test_normalizer_uses_only_training_episodes(self):
         with tempfile.TemporaryDirectory() as root:
             training = make_episode(root, self.cfg, number=0)
             heldout = make_episode(root, self.cfg, number=100)
@@ -161,6 +161,39 @@ class PipelineTests(unittest.TestCase):
             import torch
             torch.testing.assert_close(normalizer["action"].unnormalize(normalizer["action"](action)), action)
             torch.testing.assert_close(normalizer["action"](action)[:, 3:], action[:, 3:])
+
+    def test_finetune_target_normalizer_and_resume(self):
+        from ur10e_dp_real.training import configure_normalizer
+
+        model, trainset = mock.Mock(), mock.Mock()
+        settings = {"normalizer": "real_train_only", "device": "cpu"}
+        mode = configure_normalizer(
+            model, trainset, settings, from_scratch=False, resume=False
+        )
+        self.assertEqual(mode, "real_train_only")
+        model.set_normalizer.assert_called_once_with(trainset.get_normalizer.return_value)
+        model.to.assert_called_once_with("cpu")
+        model.reset_mock()
+        trainset.reset_mock()
+        configure_normalizer(model, trainset, settings, from_scratch=False, resume=True)
+        trainset.get_normalizer.assert_not_called()
+        model.set_normalizer.assert_not_called()
+
+    def test_legacy_normalizer_defaults_and_invalid_mode(self):
+        from ur10e_dp_real.training import configure_normalizer
+
+        model, trainset = mock.Mock(), mock.Mock()
+        self.assertEqual(configure_normalizer(
+            model, trainset, {"device": "cpu"}, from_scratch=False, resume=False
+        ), "preserved_from_source")
+        model.set_normalizer.assert_not_called()
+        self.assertEqual(configure_normalizer(
+            model, trainset, {"device": "cpu"}, from_scratch=True, resume=False
+        ), "real_train_only")
+        for mode, scratch in (("invalid", False), ("preserved_from_source", True)):
+            with self.assertRaises(ValueError):
+                configure_normalizer(model, trainset, {"normalizer": mode},
+                                     from_scratch=scratch, resume=False)
 
     def test_mixed_frames_rejected(self):
         with tempfile.TemporaryDirectory() as root:

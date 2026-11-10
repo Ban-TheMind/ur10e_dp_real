@@ -38,6 +38,38 @@ batch32时每epoch149更新，500epoch共74500更新；每5epoch验证和保存�
 恢复时给对应命令增加`--resume <检查点>`，保持设置与数据不变。
 GPU恢复核验模型/EMA误差在1e-7数值容差内，采样与Torch/CUDA随机数状态一致，不承诺跨GPU逐位相同。
 
+## 新微调：真机归一化、100 epoch
+
+配置为 `configs/lift_finetune_real_norm_100ep.json`，独立于上述历史实验。
+从原始 `weights/local_lift_3050.ckpt` 的源 EMA 权重重新微调，不续接旧的5000更新权重。
+固定原有18训练/5验证划分，batch32，每epoch149更新，100epoch共14900更新。
+训练入口会核对 `epochs` 与 `max_updates`，数据量变化导致预算不一致时直接报错。
+`normalizer: real_train_only` 仅从训练轨迹拟合统计，在创建EMA前应用到模型；
+验证、权重保存和后续部署使用同一套统计，断点恢复时保留checkpoint中的统计，不重新拟合。
+该设置调用与从零训练相同的 `Episodes.get_normalizer()`；图像、旋转与夹爪动作仍遵循原有表示约定。
+学习率、warmup、constant调度及全参数微调设置沿用旧微调；每5epoch完整验证并保存阶段权重。
+`best_val.pt`持续保留验证最佳权重，100epoch是训练预算，不保证已收敛。
+
+在可见桌面终端中运行以下命令；本次代码修改不会自动启动训练：
+
+```bash
+cd /home/zanglab/projects/ur10e_dp_real
+set -o pipefail
+OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 .venv_train/bin/python -u -m ur10e_dp_real.cli finetune \
+  --checkpoint weights/local_lift_3050.ckpt \
+  --data data/lift_success \
+  --output outputs/lift_finetune_real_norm_100ep_run01 \
+  --settings configs/lift_finetune_real_norm_100ep.json \
+  2>&1 | tee outputs/lift_finetune_real_norm_100ep_run01.log
+```
+
+`cd`进入项目；`set -o pipefail`让日志管道保留训练失败状态。
+两个线程变量限制CPU线程；使用现有`.venv_train`，`-u`即时显示输出，`-m`运行模块。
+`--checkpoint`指定源权重，`--data`指定成功集，`--output`指定新实验目录，
+`--settings`指定100epoch与真机归一化配置；`2>&1 | tee`同时显示并保存标准输出和错误。
+未使用`--resume`，因此是重新微调；不要用旧5000更新检查点恢复这个新配置。
+旧的`tools/run_training_terminal.py`固定指向历史实验，本次使用上述直接入口。
+
 ## 可见终端与自动衔接
 
 `tools/run_training_terminal.py finetune`与`scratch`各在一个桌面终端中运行。
