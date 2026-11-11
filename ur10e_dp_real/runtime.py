@@ -147,12 +147,19 @@ def rollout(cfg, checkpoint, output, device="cuda", inference_steps=None, durati
     keyboard = Keyboard()
     writer = None
     history = collections.deque(maxlen=model.n_obs_steps)
-    plan = collections.deque()
+    # 旧实现：主循环逐点消费队列；队列为空只代表目标已下发，不代表已到达。
+    # 新实现：整块交给共享时间计划，125 Hz 控制线程在推理期间继续执行。
+    # plan = collections.deque()
     future = None
+    dt = 1 / cfg["sample_hz"]
+    lead_time = max(0.01, 1 / cfg["control_hz"])
+    # 部署初值：4 个策略周期（20 Hz 下为 200 ms），不改变模型的 2/10/8 配置。
+    replan_interval = 4 * dt
+    next_inference = 0.0
     fixed = cfg["fixed_orientation"]
     outcome = None
 
-    def predict(obs):
+    def predict(obs, obs_time):
         started = time.monotonic()
         tensors = {
             k: torch.from_numpy(np.stack([o[k] for o in obs]))[None].to(device)
@@ -160,11 +167,11 @@ def rollout(cfg, checkpoint, output, device="cuda", inference_steps=None, durati
         }
         with torch.inference_mode():
             actions = model.predict_action(tensors)["action"][0].cpu().numpy()
-        return actions, time.monotonic() - started
+        return actions, obs_time, time.monotonic() - started
 
     pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     try:
-        with Rig(cfg) as rig:
+        with Rig(cfg, timed=True) as rig:
             writer = EpisodeWriter(
                 output,
                 cfg,
@@ -172,7 +179,9 @@ def rollout(cfg, checkpoint, output, device="cuda", inference_steps=None, durati
                 metadata={
                     "checkpoint_sha256": source_hash,
                     "inference_steps": model.num_inference_steps,
-                    "timing": "asynchronous inference; commands execute after prediction completion",
+                    "timing": "observation-relative waypoints on a shared arm/gripper clock",
+                    "replan_interval_s": replan_interval,
+                    "action_lead_time_s": lead_time,
                 },
             )
             start = time.monotonic()
@@ -180,7 +189,6 @@ def rollout(cfg, checkpoint, output, device="cuda", inference_steps=None, durati
             fixed_rotation = np.asarray(initial["tcp_pose"])[3:].copy()
             width = initial["gripper_width_m"]
             latency = 0.0
-            raw_action = None
             while time.monotonic() - start < duration:
                 tick = time.monotonic()
                 sample = rig.snapshot()
@@ -190,28 +198,69 @@ def rollout(cfg, checkpoint, output, device="cuda", inference_steps=None, durati
                 if "return" in events or "backspace" in events:
                     outcome = "return" in events
                     break
-                history.append(observation(sample, frame))
+                obs_time = sample["snapshot_monotonic"]
+                history.append((obs_time, observation(sample, frame)))
+
+                # 旧实现：收到动作后建立本地队列，清空后才再次推理，形成块间空窗。
+                # 为什么出问题：等待分支把实测 TCP 当成新目标，撤掉仍在追踪的策略目标。
+                # 新实现：下面按 200 ms 重规划；等待期间不发替代命令，旧轨迹继续走。
+                # if future is not None and future.done():
+                #     actions, latency = future.result()
+                #     plan = collections.deque(actions)
+                #     future = None
+                # 旧实现：必须耗尽动作队列才推理；新实现以观测时间控制重规划间隔。
+                # if future is None and not plan:
+                #     obs = list(history)
+                #     obs = [obs[0]] * (model.n_obs_steps - len(obs)) + obs
+                #     future = pool.submit(predict, obs)
+                # 旧实现：等待时每轮写回实测 TCP，覆盖上一个策略目标，是已复现的错误。
+                # target = np.asarray(sample["tcp_pose"])
+                # 旧实现：每 50 ms 弹一个目标并立刻下发；新实现成批提交带时间的目标。
+                # if plan:
+                #     raw_action = plan.popleft()
+                #     target, width = frame.decode_action(raw_action)
+                #     if fixed:
+                #         target[3:] = fixed_rotation
+                # rig.command(target, width)
+
+                accepted = None
                 if future is not None and future.done():
-                    actions, latency = future.result()
-                    plan = collections.deque(actions)
+                    actions, reference_time, latency = future.result()
                     future = None
-                if future is None and not plan:
-                    obs = list(history)
-                    obs = [obs[0]] * (model.n_obs_steps - len(obs)) + obs
-                    future = pool.submit(predict, obs)
-                target = np.asarray(sample["tcp_pose"])
-                if plan:
-                    raw_action = plan.popleft()
-                    target, width = frame.decode_action(raw_action)
-                    if fixed:
-                        target[3:] = fixed_rotation
-                rig.command(target, width)
+                    points = []
+                    for index, action in enumerate(actions):
+                        # 本地 Transformer predict_action() 已切片 [To-1:To-1+8]；
+                        # 第 0 个返回动作属于最新观测时刻，不能再加 To-1 偏移。
+                        # TCP 和宽度共享该名义时间；过期动作直接丢弃，不平移补发。
+                        deadline = reference_time + index * dt
+                        if deadline <= time.monotonic() + lead_time:
+                            continue
+                        pose, target_width = frame.decode_action(action)
+                        if fixed:
+                            pose[3:] = fixed_rotation
+                        points.append((deadline, pose, target_width))
+                    accepted = rig.schedule(points, lead_time)
+                if (
+                    future is None
+                    and len(history) == model.n_obs_steps
+                    and obs_time >= next_inference
+                ):
+                    future = pool.submit(predict, [obs for _, obs in history], obs_time)
+                    next_inference = obs_time + replan_interval
+
+                # 这里只记录指令轨迹，不调用 rig.command()；无新块时保持最后目标。
+                # 全过期块不会刷新 watchdog，超时仍由 Robot.run() 原停止路径处理。
+                target, scheduled_width = rig.scheduled_target(time.monotonic())
+                if target is None:
+                    target = initial["tcp_pose"]
+                if scheduled_width is not None:
+                    width = scheduled_width
                 writer.append(
                     sample,
                     target,
                     width,
                     {
-                        "raw_policy_action": raw_action,
+                        "trajectory_accepted": accepted,
                         "inference_latency_s": latency,
                         "orientation_fixed": fixed,
                     },
@@ -225,7 +274,7 @@ def rollout(cfg, checkpoint, output, device="cuda", inference_steps=None, durati
                         ),
                     ],
                 )
-                time.sleep(max(0, 1 / cfg["sample_hz"] - (time.monotonic() - tick)))
+                time.sleep(max(0, dt - (time.monotonic() - tick)))
     finally:
         if writer:
             print("Saved", writer.close(success=outcome))

@@ -7,7 +7,7 @@ import threading
 import time
 from pathlib import Path
 import numpy as np
-from .geometry import bounded_pose
+from .geometry import TimedActions, bounded_pose
 
 
 class Worker:
@@ -40,15 +40,16 @@ class Worker:
 
 
 class Gripper(Worker):
-    def __init__(self, cfg):
+    def __init__(self, cfg, timed_actions=None):
         super().__init__()
         self.cfg = cfg
         self.pending = None
+        self.timed_actions = timed_actions
         self.sample = None
         self.last_width = None
         self.launch()
 
-    def transact(self, operation, width=0):
+    def transact(self, operation, width=0, plan_version=None):
         c = self.cfg
         args = [
             str(Path(c["helper"]).resolve()),
@@ -62,12 +63,33 @@ class Gripper(Worker):
             str(width * 1000),
             str(c["force_raw"]),
         ]
-        result = subprocess.run(
-            args, capture_output=True, text=True, timeout=2 * c["action_timeout_s"] + 10
-        )
-        if result.returncode:
-            raise IOError(result.stderr.strip())
-        status = json.loads(result.stdout)
+        # 旧实现：先取出单槽宽度，再阻塞 subprocess.run；部署计划可能已取消该宽度。
+        # result = subprocess.run(
+        #     args, capture_output=True, text=True, timeout=2 * c["action_timeout_s"] + 10
+        # )
+        # 新实现：部署命令在启动发送 helper 前，持计划锁重新核对版本及当前到时宽度。
+        # 锁仅覆盖核对和 Popen，不覆盖串口等待，避免阻塞轨迹替换与 125 Hz 控制。
+        if plan_version is not None:
+            with self.timed_actions.changed:
+                _, active_width, _ = self.timed_actions.sample(time.monotonic())
+                if (self.stop_event.is_set()
+                        or plan_version != self.timed_actions.version
+                        or active_width != width):
+                    return None
+                process = subprocess.Popen(args, stdout=subprocess.PIPE,
+                                           stderr=subprocess.PIPE, text=True)
+        else:
+            process = subprocess.Popen(args, stdout=subprocess.PIPE,
+                                       stderr=subprocess.PIPE, text=True)
+        try:
+            stdout, stderr = process.communicate(timeout=2 * c["action_timeout_s"] + 10)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.communicate()
+            raise
+        if process.returncode:
+            raise IOError(stderr.strip())
+        status = json.loads(stdout)
         if status["fault"]:
             raise IOError("Gripper fault {}".format(status["fault"]))
         return dict(
@@ -87,6 +109,11 @@ class Gripper(Worker):
                 self.last_width = width
 
     def run(self):
+        if self.timed_actions is not None:
+            self.run_timed()
+            return
+        # 旧单槽逻辑仍用于键盘采集：只需最近一次人工宽度，无未来动作时间轴。
+        # 部署路径在上方转入 run_timed()，不读写 pending，也不按轮询周期等待动作。
         while not self.stop_event.is_set():
             with self.lock:
                 width, self.pending = self.pending, None
@@ -94,6 +121,38 @@ class Gripper(Worker):
             with self.lock:
                 self.sample = status
             self.stop_event.wait(1 / self.cfg["poll_hz"])
+
+    def run_timed(self):
+        schedule = self.timed_actions
+        next_status = time.monotonic()
+        sent_width = None
+        while not self.stop_event.is_set():
+            with schedule.changed:
+                now = time.monotonic()
+                _, width, next_point = schedule.sample(now)
+                # 旧部署也调用 command(width)，依赖 pending 单槽和状态轮询。
+                # width, self.pending = self.pending, None
+                # 新实现从当前有效计划取到时宽度；被替换的未来闭合/释放不会补发。
+                version = schedule.version
+                send = width is not None and (
+                    sent_width is None or abs(width - sent_width) > 0.001
+                )
+                if not send and now < next_status:
+                    wake = next_status if next_point is None else min(next_status, next_point)
+                    # 到期时间和计划替换都能唤醒，宽度变化无需等下一次状态轮询。
+                    schedule.changed.wait(max(0, wake - now))
+                    continue
+            if self.stop_event.is_set():
+                break
+            status = (self.transact("command", width, plan_version=version)
+                      if send else self.transact("status"))
+            if status is None:  # 发送边界发现计划已变，立即重新选择当前目标。
+                continue
+            if send:
+                sent_width = width
+            with self.lock:
+                self.sample = status
+            next_status = time.monotonic() + 1 / self.cfg["poll_hz"]
 
 
 class Camera(Worker):
@@ -130,11 +189,12 @@ class Camera(Worker):
 
 
 class Robot(Worker):
-    def __init__(self, cfg, motion=True):
+    def __init__(self, cfg, motion=True, timed_actions=None):
         super().__init__()
         from rtde_receive import RTDEReceiveInterface
 
         self.cfg = cfg
+        self.timed_actions = timed_actions
         self.receive = RTDEReceiveInterface(cfg["robot_ip"])
         self.control = None
         try:
@@ -152,7 +212,7 @@ class Robot(Worker):
             self.receive.disconnect()
             raise
 
-    def command(self, pose):
+    def validate_target(self, pose):
         pose = np.asarray(pose, dtype=float)
         if pose.shape != (6,) or not np.isfinite(pose).all():
             raise ValueError("Expected finite 6D TCP target")
@@ -162,6 +222,10 @@ class Robot(Worker):
             raise ValueError(
                 "TCP target outside configured workspace: {}".format(pose[:3])
             )
+        return pose
+
+    def command(self, pose):
+        pose = self.validate_target(pose)
         with self.lock:
             self.target, self.last_command = pose.copy(), time.monotonic()
 
@@ -190,7 +254,21 @@ class Robot(Worker):
                 }
                 with self.lock:
                     self.sample = sample
-                    target, age = self.target.copy(), start - self.last_command
+                    target, last_command = self.target.copy(), self.last_command
+                # 旧实现仅追踪 command() 的单个 target：
+                # target, age = self.target.copy(), start - self.last_command
+                # 新部署从共享指令轨迹插值，不用实测 TCP 重建轨迹起点。
+                if self.timed_actions is not None:
+                    schedule = self.timed_actions
+                    with schedule.changed:
+                        # 读取状态期间可能刚提交新块；用锁内当前时间，避免以早于
+                        # 新交接点的 start 采样而短暂退回初始化 target。
+                        scheduled, _, _ = schedule.sample(time.monotonic())
+                        if scheduled is not None:
+                            target = scheduled
+                        if schedule.submitted_at is not None:
+                            last_command = schedule.submitted_at
+                age = start - last_command
                 if self.control:
                     if age > c["command_timeout_s"]:
                         raise TimeoutError(
@@ -226,17 +304,18 @@ class Robot(Worker):
 class Rig:
     """Snapshot includes per-source times; no claim of camera hardware synchronization."""
 
-    def __init__(self, cfg, motion=True):
+    def __init__(self, cfg, motion=True, timed=False):
         self.cfg, self.devices = cfg, []
+        self.timed_actions = TimedActions() if timed else None
         try:
             # Cameras/gripper are initialized before the motion watchdog starts.
             self.cameras = {}
             for name, spec in cfg["cameras"].items():
                 self.cameras[name] = Camera(spec)
                 self.devices.append(self.cameras[name])
-            self.gripper = Gripper(cfg["gripper"])
+            self.gripper = Gripper(cfg["gripper"], timed_actions=self.timed_actions)
             self.devices.append(self.gripper)
-            self.robot = Robot(cfg, motion=motion)
+            self.robot = Robot(cfg, motion=motion, timed_actions=self.timed_actions)
             self.devices.append(self.robot)
             deadline = time.monotonic() + 10
             while any(d.sample is None for d in self.devices):
@@ -274,6 +353,32 @@ class Rig:
     def command(self, pose, width):
         self.robot.command(pose)
         self.gripper.command(width)
+
+    def schedule(self, points, lead_time):
+        """Atomically replace future TCP and width targets on one monotonic clock."""
+        schedule = self.timed_actions
+        with schedule.changed:
+            now = time.monotonic()
+            future = []
+            # 提交边界再过滤一次，避免解码/校验期间已过期的点进入控制器。
+            for deadline, pose, width in points:
+                if deadline > now + lead_time:
+                    pose = self.robot.validate_target(pose).copy()
+                    if not np.isfinite(width) or not 0 <= width <= 0.085:
+                        raise ValueError("Robotiq width must be 0..0.085m")
+                    future.append((deadline, pose, float(width)))
+            return schedule.submit(
+                now,
+                future,
+                self.robot.target.copy(),
+                self.cfg["translation_speed_m_s"],
+                self.cfg["rotation_speed_rad_s"],
+            )
+
+    def scheduled_target(self, now):
+        with self.timed_actions.changed:
+            pose, width, _ = self.timed_actions.sample(now)
+            return pose, width
 
     def close(self):
         # Stop robot first, then drain camera/gripper workers.

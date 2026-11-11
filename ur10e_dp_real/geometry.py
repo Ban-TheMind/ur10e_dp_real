@@ -1,5 +1,8 @@
 """One explicit transform contract shared by collection, training and execution."""
 
+from bisect import bisect_right
+from threading import Condition
+
 import numpy as np
 from scipy.spatial.transform import Rotation
 
@@ -101,3 +104,70 @@ def bounded_pose(current, target, max_distance, max_angle):
     dr = (r1 * r0.inv()).as_rotvec()
     dr *= min(1.0, max_angle / max(np.linalg.norm(dr), 1e-12))
     return np.r_[current[:3] + delta, (Rotation.from_rotvec(dr) * r0).as_rotvec()]
+
+
+class TimedActions:
+    """A shared TCP trajectory and piecewise-constant gripper target."""
+
+    def __init__(self):
+        self.changed = Condition()
+        self.points = []
+        self.submitted_at = None
+        self.version = 0
+
+    def sample(self, now):
+        """Return pose, active width and next deadline. Caller holds changed."""
+        index = bisect_right([point[0] for point in self.points], now)
+        if not index:
+            return None, None, self.points[0][0] if self.points else None
+
+        t0, pose, width = self.points[index - 1]
+        if index == len(self.points):
+            return pose, width, None
+
+        t1, next_pose, _ = self.points[index]
+        fraction = (now - t0) / (t1 - t0)
+        xyz = pose[:3] + fraction * (next_pose[:3] - pose[:3])
+        r0 = Rotation.from_rotvec(pose[3:])
+        r1 = Rotation.from_rotvec(next_pose[3:])
+        turn = (r1 * r0.inv()).as_rotvec()
+        rotation = (Rotation.from_rotvec(fraction * turn) * r0).as_rotvec()
+        return np.r_[xyz, rotation], width, t1
+
+    def submit(self, now, points, initial_pose, translation_speed, rotation_speed):
+        """Splice future points and retime unreachable deadlines for both devices."""
+        with self.changed:
+            if not points or points[0][0] <= now:
+                return False
+            # 交接点取旧指令轨迹在 now 的值；不以落后的实测 TCP 为起点。
+            pose, width, _ = self.sample(now)
+            if pose is None:
+                pose = initial_pose
+            if self.points and points[0][0] > self.points[-1][0]:
+                retained = [point for point in self.points if point[0] > now]
+            else:
+                retained = []
+            # 重叠块从交接时刻起整体替换未来；同一个列表同时取消手臂和夹爪旧点。
+            updated = [(now, pose, width), *retained]
+            delay = 0.0
+            for deadline, target, target_width in points:
+                previous_time, previous_pose, _ = updated[-1]
+                distance = np.linalg.norm(target[:3] - previous_pose[:3])
+                rotation = (
+                    Rotation.from_rotvec(target[3:])
+                    * Rotation.from_rotvec(previous_pose[3:]).inv()
+                ).magnitude()
+                min_duration = max(
+                    distance / translation_speed, rotation / rotation_speed
+                )
+                # 参考 RTDE 插值控制器：受限速影响无法准时到达时延长轨迹。
+                # TCP 与宽度一起顺延；名义时间仍来自观测，不把过期点重新排队。
+                # 累积延迟保留后续名义步长，避免多个目标挤在同一时刻。
+                target_time = max(deadline + delay, previous_time + min_duration)
+                delay = target_time - deadline
+                updated.append((target_time, target, target_width))
+            self.points = updated
+            self.submitted_at = now
+            self.version += 1
+            self.changed.notify_all()
+            return True
