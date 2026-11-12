@@ -66,6 +66,7 @@ def collect(cfg, output):
     save_pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     saves = []
     fixed = cfg["fixed_orientation"]
+    returning_home = False
     try:
         with Rig(cfg) as rig:
             width = rig.snapshot()["gripper_width_m"]
@@ -79,6 +80,20 @@ def collect(cfg, output):
                 events, translation, rotation = keyboard.poll()
                 if "escape" in events:
                     break
+                if returning_home:
+                    # 归位不写入示教；持续检查设备、刷新 watchdog，Esc 始终可用。
+                    rig.keepalive()
+                    if not rig.homing:
+                        returning_home = False
+                        print("Home complete; ready to collect", flush=True)
+                    keyboard.draw(sample, [
+                        "RETURNING HOME | Esc stop" if returning_home else "HOME COMPLETE",
+                        "Recording and jogging resume after Home",
+                        "Gripper width unchanged | O open after arrival",
+                    ])
+                    time.sleep(max(0, 1 / cfg["sample_hz"] - (time.monotonic() - start)))
+                    # 完成后再取一份新快照，避免用归位完成前的旧读数生成目标。
+                    continue
                 if "r" in events:
                     fixed = not fixed
                 if "o" in events:
@@ -96,6 +111,14 @@ def collect(cfg, output):
                     if key in events and writer:
                         saves.append(save_pool.submit(writer.close, success=success))
                         writer = None
+                if "home" in events:
+                    if writer is not None:
+                        print("Save/finish the episode before pressing Home", flush=True)
+                    else:
+                        returning_home = rig.home()
+                        if returning_home:
+                            print("Returning to fixed Home joints; Esc stops", flush=True)
+                            continue
                 # Each command is relative to measured pose: release does not chase an old distant target.
                 target = np.asarray(sample["tcp_pose"], dtype=float)
                 dt = 1 / cfg["sample_hz"]
@@ -113,7 +136,7 @@ def collect(cfg, output):
                     [
                         "W/S X | A/D Y | Q/E Z | O open | P close | R rotation mode",
                         "I/K J/L U/H rotate | C record | Enter save success | Backspace save failure",
-                        "Esc stop | {} | {}".format(
+                        "Esc stop | Home reset (idle) | {} | {}".format(
                             "fixed orientation" if fixed else "6DoF",
                             "RECORDING" if writer else "idle",
                         ),

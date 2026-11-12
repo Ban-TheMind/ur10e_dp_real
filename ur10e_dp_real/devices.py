@@ -10,6 +10,11 @@ import numpy as np
 from .geometry import TimedActions, bounded_pose
 
 
+# Reused from UR10e_vision_based_fruit_harvesting/tools/ur10e_control.py: HOME.
+# Order: shoulder_pan, shoulder_lift, elbow, wrist_1, wrist_2, wrist_3.
+HOME_JOINTS_DEG = (-180.0, -90.0, 127.0, -123.0, 270.0, 0.0)
+
+
 class Worker:
     def __init__(self):
         self.stop_event = threading.Event()
@@ -204,6 +209,8 @@ class Robot(Worker):
                 self.control = RTDEControlInterface(cfg["robot_ip"])
             self.target = np.asarray(self.receive.getActualTCPPose())
             self.last_command = time.monotonic()
+            self.homing = False
+            self.home_requested = False
             self.sample = None
             self.launch()
         except BaseException:
@@ -227,12 +234,35 @@ class Robot(Worker):
     def command(self, pose):
         pose = self.validate_target(pose)
         with self.lock:
-            self.target, self.last_command = pose.copy(), time.monotonic()
+            # A late keyboard command must not replace the post-Home hold pose.
+            if not self.homing:
+                self.target = pose.copy()
+            self.last_command = time.monotonic()
+
+    def request_home(self):
+        """Queue Home; only the robot worker calls RTDE motion methods."""
+        if self.control is None or self.timed_actions is not None:
+            raise RuntimeError("Home is only available during keyboard collection")
+        self.check()
+        with self.lock:
+            if self.homing:
+                return False
+            self.homing = self.home_requested = True
+            self.last_command = time.monotonic()
+        return True
+
+    def keepalive(self):
+        """Keep the existing command watchdog alive while collect polls Home."""
+        with self.lock:
+            self.last_command = time.monotonic()
 
     def run(self):
         c = self.cfg
         dt = 1 / c["control_hz"]
         servo_pose = self.target.copy()
+        home_started = False
+        home_start_time = None
+        home_q = np.deg2rad(HOME_JOINTS_DEG)
         try:
             while not self.stop_event.is_set():
                 start = time.monotonic()
@@ -255,6 +285,8 @@ class Robot(Worker):
                 with self.lock:
                     self.sample = sample
                     target, last_command = self.target.copy(), self.last_command
+                    home_requested = self.home_requested
+                    self.home_requested = False
                 # 旧实现仅追踪 command() 的单个 target：
                 # target, age = self.target.copy(), start - self.last_command
                 # 新部署从共享指令轨迹插值，不用实测 TCP 重建轨迹起点。
@@ -274,27 +306,54 @@ class Robot(Worker):
                         raise TimeoutError(
                             "No control update for {} seconds".format(age)
                         )
-                    servo_pose = bounded_pose(
-                        servo_pose,
-                        target,
-                        c["translation_speed_m_s"] * dt,
-                        c["rotation_speed_rad_s"] * dt,
-                    )
-                    accepted = self.control.servoL(
-                        servo_pose.tolist(),
-                        c["translation_speed_m_s"],
-                        0.2,
-                        dt,
-                        0.1,
-                        300,
-                    )
-                    if not accepted:
-                        raise RuntimeError("RTDE controller rejected servoL command")
+                    if home_requested:
+                        # 归位复用已有 RTDE 连接，不启动另一套 ROS/MoveIt 驱动。
+                        # 先退出 servoL；异步 moveJ 期间不再发送 servoL。
+                        self.control.servoStop()
+                        home_started = True
+                        home_start_time = time.monotonic()
+                        if not self.control.moveJ(home_q.tolist(), 0.2, 0.3, True):
+                            raise RuntimeError("RTDE controller rejected Home moveJ")
+                    if home_started:
+                        if time.monotonic() - home_start_time > c.get("home_timeout_s", 120.0):
+                            raise TimeoutError("Home movement timed out")
+                        if self.control.getAsyncOperationProgress() < 0:
+                            actual_q = np.asarray(self.receive.getActualQ())
+                            if np.max(np.abs(actual_q - home_q)) > np.deg2rad(0.5):
+                                raise RuntimeError("Home ended without reaching target joints")
+                            # 回位后以新实测 TCP 重建键盘伺服起点，不能追逐回位前旧目标。
+                            # 这是显式 Home 完成后的切换，与部署推理间隙不同。
+                            servo_pose = self.validate_target(self.receive.getActualTCPPose()).copy()
+                            with self.lock:
+                                self.target = servo_pose.copy()
+                                self.last_command = time.monotonic()
+                                self.homing = False
+                            home_started = False
+                    else:
+                        servo_pose = bounded_pose(
+                            servo_pose,
+                            target,
+                            c["translation_speed_m_s"] * dt,
+                            c["rotation_speed_rad_s"] * dt,
+                        )
+                        accepted = self.control.servoL(
+                            servo_pose.tolist(),
+                            c["translation_speed_m_s"],
+                            0.2,
+                            dt,
+                            0.1,
+                            300,
+                        )
+                        if not accepted:
+                            raise RuntimeError("RTDE controller rejected servoL command")
                 self.stop_event.wait(max(0, dt - (time.monotonic() - start)))
         finally:
             if self.control:
                 try:
-                    self.control.servoStop()
+                    if home_started:
+                        self.control.stopJ(0.5)
+                    else:
+                        self.control.servoStop()
                 finally:
                     self.control.stopScript()
                     self.control.disconnect()
@@ -353,6 +412,18 @@ class Rig:
     def command(self, pose, width):
         self.robot.command(pose)
         self.gripper.command(width)
+
+    def home(self):
+        return self.robot.request_home()
+
+    @property
+    def homing(self):
+        self.robot.check()
+        with self.robot.lock:
+            return self.robot.homing
+
+    def keepalive(self):
+        self.robot.keepalive()
 
     def schedule(self, points, lead_time):
         """Atomically replace future TCP and width targets on one monotonic clock."""
